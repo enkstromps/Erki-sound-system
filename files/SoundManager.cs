@@ -1,15 +1,17 @@
-﻿using System.Collections.Generic;
+//Sound Manager script by Erik Engström 2021
+
+using System.Collections.Generic;
 using UnityEngine;
 public class SoundManager : MonoBehaviour
 {
     public static SoundManager Instance { get; private set; }
-    public GameObject audioHolder = null;
+
+    [SerializeField] bool usePlayerPrefs = false;
 
     [HideInInspector]
-    public float musicVolume = 0, soundEffectVolume = 0;
+    public float musicVolume = 1, soundEffectVolume = 1, otherVolume = 1;
     private void Awake()
     {
-
         if (Instance == null)
         {
             Instance = this;
@@ -35,8 +37,9 @@ public class SoundManager : MonoBehaviour
         public float minPitch = 0.8f;
         public float maxPitch = 1.2f;
         public bool repeating = false;
+        public bool destroyOnEnd = true;
         public float timeUntilDestroyed = 1;
-        public enum SoundType { SoundEffect, Music, Other}
+        public enum SoundType { SoundEffect, Music, Other }
         [Header("Type")]
         public SoundType soundType = 0;
     }
@@ -48,7 +51,7 @@ public class SoundManager : MonoBehaviour
     ///</summary>
     public GameObject PlaySound(string name)
     {
-        return SetAudioHolderValues(audioHolder, null, name, Vector3.zero);
+        return SetAudioHolderValues(null, name, Vector3.zero);
     }
 
     ///<summary>
@@ -56,18 +59,18 @@ public class SoundManager : MonoBehaviour
     ///</summary>
     public GameObject PlaySound(string name, Transform parent)
     {
-        return SetAudioHolderValues(audioHolder, parent, name, Vector3.zero);
+        return SetAudioHolderValues(parent, name, Vector3.zero);
     }
 
     ///<summary>
     ///Plays a sound, sound object becomes parented to parent with an offset position. Parent can be null.
     ///</summary>
-    public GameObject PlaySound(string name, Transform parent, Vector3 position)
+    public GameObject PlaySound(string name, Vector3 position, Transform parent)
     {
-        return SetAudioHolderValues(audioHolder, parent, name, position);
+        return SetAudioHolderValues(parent, name, position);
     }
 
-    private GameObject SetAudioHolderValues(GameObject audioHolder, Transform parent, string name, Vector3 position)
+    private GameObject SetAudioHolderValues(Transform parent, string name, Vector3 position)
     {
         ErkiSound erkiSound = GetErkiSoundFromName(name);
 
@@ -77,13 +80,13 @@ public class SoundManager : MonoBehaviour
             return null;
         }
 
-        var audioHolderInstance = Instantiate(audioHolder, parent);
+        var audioHolderInstance = CreateAudioHolder(parent, name);
         AudioSource audioHolderInstanceAudioSource = audioHolderInstance.GetComponent<AudioSource>();
 
         audioHolderInstance.transform.localPosition = position;
         audioHolderInstanceAudioSource.spatialBlend = erkiSound.spatialBlend;
         audioHolderInstanceAudioSource.clip = erkiSound.sounds[Random.Range(0, erkiSound.sounds.Count)];
-        //audioHolderInstanceAudioSource.volume = erkiSound.volume;
+        audioHolderInstanceAudioSource.volume = erkiSound.volume;
         audioHolderInstanceAudioSource.loop = erkiSound.repeating;
 
         if (erkiSound.randomPitch == true)
@@ -95,23 +98,38 @@ public class SoundManager : MonoBehaviour
             audioHolderInstanceAudioSource.pitch = 1;
         }
 
-        switch (erkiSound.soundType)
+        if (usePlayerPrefs)
         {
-            case ErkiSound.SoundType.SoundEffect:
-                {
-                    audioHolderInstanceAudioSource.volume = erkiSound.volume * soundEffectVolume;
-                    break;
-                }
-            case ErkiSound.SoundType.Music:
-                {
-                    audioHolderInstanceAudioSource.volume = erkiSound.volume * musicVolume;
-                    break;
-                }
+            switch (erkiSound.soundType)
+            {
+                case ErkiSound.SoundType.SoundEffect:
+                    {
+                        audioHolderInstanceAudioSource.volume = erkiSound.volume * soundEffectVolume;
+                        break;
+                    }
+                case ErkiSound.SoundType.Music:
+                    {
+                        audioHolderInstanceAudioSource.volume = erkiSound.volume * musicVolume;
+                        break;
+                    }
+                case ErkiSound.SoundType.Other:
+                    {
+                        audioHolderInstanceAudioSource.volume = erkiSound.volume * otherVolume;
+                        break;
+                    }
+            }
         }
 
-        Destroy(audioHolderInstance, erkiSound.timeUntilDestroyed);
-
         audioHolderInstanceAudioSource.Play();
+
+        if (erkiSound.destroyOnEnd)
+        {
+            Destroy(audioHolderInstance, audioHolderInstanceAudioSource.time);
+        }
+        else
+        {
+            Destroy(audioHolderInstance, erkiSound.timeUntilDestroyed);
+        }
 
         return audioHolderInstance;
     }
@@ -130,8 +148,38 @@ public class SoundManager : MonoBehaviour
         return erkiSound;
     }
 
+    public ErkiSound[] GetErkiSoundsFromSoundType(ErkiSound.SoundType soundType)
+    {
+        List<ErkiSound> tempErkis = new List<ErkiSound>();
+
+        for (int i = 0; i < erkiSounds.Count; i++)
+        {
+            if (soundType == erkiSounds[i].soundType)
+            {
+                tempErkis.Add(erkiSounds[i]);
+            }
+        }
+
+        if (tempErkis.Count == 0)
+        {
+            Debug.LogWarning($"Could not find sounds of type: '{soundType}'");
+        }
+
+        return tempErkis.ToArray();
+    }
+
     public AudioClip[] GetAudioClipsFromErkiSound(string name)
     {
         return GetErkiSoundFromName(name).sounds.ToArray();
+    }
+
+    private GameObject CreateAudioHolder(Transform parent, string name)
+    {
+        GameObject audioHolder = new GameObject();
+        audioHolder.transform.parent = parent;
+        audioHolder.name = $"AudioHolder ({name})";
+        audioHolder.AddComponent<AudioSource>();
+
+        return audioHolder;
     }
 }
