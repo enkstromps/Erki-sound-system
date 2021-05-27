@@ -2,26 +2,11 @@
 
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Audio;
 public class SoundManager : MonoBehaviour
 {
     public static SoundManager Instance { get; private set; }
-
-    [SerializeField] bool usePlayerPrefs = false;
-
-    [HideInInspector]
-    public float musicVolume = 1, soundEffectVolume = 1, otherVolume = 1;
-    private void Awake()
-    {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else
-        {
-            Debug.LogError($"Deleted object: '{gameObject.name}', as there can only be one SoundManager in a scene");
-            Destroy(gameObject);
-        }
-    }
+    public AudioMixer audioMixer = null;
 
     [System.Serializable]
     public class ErkiSound
@@ -38,13 +23,42 @@ public class SoundManager : MonoBehaviour
         public float maxPitch = 1.2f;
         public bool repeating = false;
         public bool destroyOnEnd = true;
-        public float timeUntilDestroyed = 1;
-        public enum SoundType { SoundEffect, Music, Other }
-        [Header("Type")]
-        public SoundType soundType = 0;
+        public float timeUntilDestroyed = Mathf.Infinity;
+        public float startTime = 0;
+        public AudioMixerGroup audioMixerGroup = null;
     }
 
     public List<ErkiSound> erkiSounds = new List<ErkiSound>();
+
+    private void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else
+        {
+            Debug.LogError($"Deleted object: '{gameObject.name}', as there can only be one SoundManager in a scene");
+            Destroy(gameObject);
+        }
+    }
+    private void Update()
+    {
+        Mixer();
+    }
+
+    private void Mixer()
+    {
+        if (!audioMixer) { return; }
+        //Put your audioMixer floats here
+        audioMixer.SetFloat("MixerMusicVolume", LogConvert(PlayerPrefs.GetFloat("MusicVolume")));
+        audioMixer.SetFloat("MixerSoundVolume", LogConvert(PlayerPrefs.GetFloat("SoundVolume")));
+    }
+
+    private float LogConvert(float volume)
+    {
+        return Mathf.Clamp(20 * Mathf.Log10(volume), -55, 0);
+    }
 
     ///<summary>
     ///Plays a sound.
@@ -88,6 +102,8 @@ public class SoundManager : MonoBehaviour
         audioHolderInstanceAudioSource.clip = erkiSound.sounds[Random.Range(0, erkiSound.sounds.Count)];
         audioHolderInstanceAudioSource.volume = erkiSound.volume;
         audioHolderInstanceAudioSource.loop = erkiSound.repeating;
+        audioHolderInstanceAudioSource.time = Mathf.Clamp(erkiSound.startTime, 0, audioHolderInstanceAudioSource.clip.length);
+        audioHolderInstanceAudioSource.outputAudioMixerGroup = erkiSound.audioMixerGroup;
 
         if (erkiSound.randomPitch == true)
         {
@@ -98,33 +114,11 @@ public class SoundManager : MonoBehaviour
             audioHolderInstanceAudioSource.pitch = 1;
         }
 
-        if (usePlayerPrefs)
-        {
-            switch (erkiSound.soundType)
-            {
-                case ErkiSound.SoundType.SoundEffect:
-                    {
-                        audioHolderInstanceAudioSource.volume = erkiSound.volume * soundEffectVolume;
-                        break;
-                    }
-                case ErkiSound.SoundType.Music:
-                    {
-                        audioHolderInstanceAudioSource.volume = erkiSound.volume * musicVolume;
-                        break;
-                    }
-                case ErkiSound.SoundType.Other:
-                    {
-                        audioHolderInstanceAudioSource.volume = erkiSound.volume * otherVolume;
-                        break;
-                    }
-            }
-        }
-
         audioHolderInstanceAudioSource.Play();
 
         if (erkiSound.destroyOnEnd)
         {
-            Destroy(audioHolderInstance, audioHolderInstanceAudioSource.time);
+            Destroy(audioHolderInstance, audioHolderInstanceAudioSource.clip.length);
         }
         else
         {
@@ -146,26 +140,6 @@ public class SoundManager : MonoBehaviour
             }
         }
         return erkiSound;
-    }
-
-    public ErkiSound[] GetErkiSoundsFromSoundType(ErkiSound.SoundType soundType)
-    {
-        List<ErkiSound> tempErkis = new List<ErkiSound>();
-
-        for (int i = 0; i < erkiSounds.Count; i++)
-        {
-            if (soundType == erkiSounds[i].soundType)
-            {
-                tempErkis.Add(erkiSounds[i]);
-            }
-        }
-
-        if (tempErkis.Count == 0)
-        {
-            Debug.LogWarning($"Could not find sounds of type: '{soundType}'");
-        }
-
-        return tempErkis.ToArray();
     }
 
     public AudioClip[] GetAudioClipsFromErkiSound(string name)
